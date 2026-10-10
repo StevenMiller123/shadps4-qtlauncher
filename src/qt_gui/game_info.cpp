@@ -71,7 +71,7 @@ void ScanDirectoryRecursively(const QString& dir, QStringList& filePaths, int cu
     entries.append(
         directory.entryInfoList(QStringList{"*.zar"}, QDir::Files | QDir::NoDotAndDotDot));
     QFileInfoList rejectedPatches{};
-    QSet<QString> foundSerials{};
+    QSet<std::string_view> foundSerials{};
 
     for (const auto& entry : entries) {
         if (entry.completeBaseName().endsWith("-UPDATE") ||
@@ -116,6 +116,7 @@ void ScanDirectoryRecursively(const QString& dir, QStringList& filePaths, int cu
     // Iterate through any patches rejected in the first pass to catch merged games
     for (const auto& patch : rejectedPatches) {
         const auto psf_data = Core::FileSys::ReadGameFile(entry_path, "sce_sys/param.sfo");
+        PSF psf;
         if (psf_data && psf.Open(*psf_data)) {
             const auto serial = psf.GetString("TITLE_ID");
             if (!foundSerials.contains(*serial)) {
