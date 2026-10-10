@@ -15,6 +15,7 @@
 
 #include <QInputDialog>
 #include <QMessageBox>
+#include <QSet>
 
 // Maximum depth to search for games in subdirectories
 const int max_recursion_depth = 5;
@@ -69,6 +70,8 @@ void ScanDirectoryRecursively(const QString& dir, QStringList& filePaths, int cu
     QFileInfoList entries = directory.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot);
     entries.append(
         directory.entryInfoList(QStringList{"*.zar"}, QDir::Files | QDir::NoDotAndDotDot));
+    QFileInfoList rejectedPatches{};
+    QSet<QString> foundSerials{};
 
     for (const auto& entry : entries) {
         if (entry.completeBaseName().endsWith("-UPDATE") ||
@@ -93,11 +96,32 @@ void ScanDirectoryRecursively(const QString& dir, QStringList& filePaths, int cu
                 if (category && category->substr(0, 2) == "gd") {
                     // If this is a game directory, add it to the list
                     filePaths.append(entry.absoluteFilePath());
+
+                    // Track valid game serials
+                    const auto serial = psf.GetString("TITLE_ID");
+                    if (serial && serial->length() == 10) {
+                        foundSerials.insert(*serial);
+                    }
+                } else if (category && category->substr(0, 3) == "gp") {
+                    // Update param.sfo in a non-update folder
+                    rejectedPatches.append(entry);
                 }
             }
         } else if (!is_zar) {
             // If this is a folder, but not a game directory, scan this folder for dumps
             ScanDirectoryRecursively(entry.absoluteFilePath(), filePaths, current_depth + 1);
+        }
+    }
+
+    // Iterate through any patches rejected in the first pass to catch merged games
+    for (const auto& patch : rejectedPatches) {
+        const auto psf_data = Core::FileSys::ReadGameFile(entry_path, "sce_sys/param.sfo");
+        if (psf_data && psf.Open(*psf_data)) {
+            const auto serial = psf.GetString("TITLE_ID");
+            if (!foundSerials.contains(*serial)) {
+                // Patch with no base game, treat it as a game anyway.
+                filePaths.append(patch.absoluteFilePath());
+            }
         }
     }
 }
